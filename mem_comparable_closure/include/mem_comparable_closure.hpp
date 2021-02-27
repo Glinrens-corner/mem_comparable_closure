@@ -280,6 +280,10 @@ namespace mem_comparable_closure{
   template< class current_function_signature, class ...closed_t>
   class ClosureContainer;
 
+  template <class T>
+  using remove_cvref = std::remove_cv<typename std::remove_reference<T>::type>;
+
+  
   //BaseContainer (wraps only a function pointer)
   // the function has no arguments
   template<class return_t  >
@@ -290,11 +294,40 @@ namespace mem_comparable_closure{
     return_t operator( )( )const {
       return (*fn)( );
     }
-      
+
+    MemCompareInfo get_mem_compare_info(const void* next_obj,
+					mem_compare_continuation_fn_t continuation,
+					detail::IteratorStack& stack)const{
+      // saving continuation
+      new (stack.get_new<ComparisonIteratorBase>()) ComparisonIteratorBase{
+	.next_obj = next_obj,  
+	  .continuation_fn = continuation};
+      MemCompareInfo info{
+	.next_obj = static_cast<const void*>(this),
+	  .continuation_fn = remove_cvref<decltype(*this)>::type::continue_mem_compare_info,
+	  .obj  = static_cast<const void*>(&(this->fn) ),
+	  .size = sizeof(fn)
+	  };
+      return info;
+    }
+
+    static MemCompareInfo continue_mem_compare_info(detail::IteratorStack& stack,
+						    const void* obj){
+      auto saved = stack.pop_last<ComparisonIteratorBase>();
+      MemCompareInfo info{
+	.next_obj = saved.next_obj,
+	  .continuation_fn = saved.continuation_fn,
+	  .obj  = nullptr,
+	  .size =0
+	  };
+      return info;
+    };
+
+    
   private:
     return_t (*fn)( );
   };
-
+  
   //BaseContainer (wraps only a function pointer)
   // the function has at least one argument
   template<class return_t, class first_t, class ...Arg_t  >
@@ -305,8 +338,37 @@ namespace mem_comparable_closure{
     return_t operator( )(first_t first, Arg_t...args )const {
       return (*fn)(first, args... );
     }
+  
+    MemCompareInfo get_mem_compare_info(const void* next_obj,
+					mem_compare_continuation_fn_t continuation,
+					detail::IteratorStack& stack)const{
+      // saving continuation
+      new (stack.get_new<ComparisonIteratorBase>()) ComparisonIteratorBase{
+	.next_obj = next_obj,  
+	  .continuation_fn = continuation};
+    
+      MemCompareInfo info{
+	.next_obj = static_cast<const void*>(this),
+	  .continuation_fn = remove_cvref<decltype(*this)>::type::continue_mem_compare_info,
+	  .obj  = static_cast<const void*>(&(this->fn) ),
+	  .size = sizeof(this->fn)
+	  };
+      return info;
+    }
+   
+    static MemCompareInfo continue_mem_compare_info(detail::IteratorStack& stack,
+						    const void* obj){
+      auto saved = stack.pop_last<ComparisonIteratorBase>();
+      MemCompareInfo info{
+	.next_obj = saved.next_obj,
+	  .continuation_fn = saved.continuation_fn,
+	  .obj  = nullptr,
+	  .size =0
+	  };
+      return info;
+    };      
 
-      
+    
     decltype(auto) bind(first_t closed_arg) {
       return ClosureContainer<FunctionSignature<return_t, Arg_t...>,first_t>(*this, closed_arg);  
     }
@@ -329,15 +391,16 @@ namespace mem_comparable_closure{
     FunctionSignature<return_t,first_closure_t>,
     closure_t...>
   {
-  public:
-    ClosureContainer(ClosureContainer<
-		     FunctionSignature<return_t,first_closure_t>,
-		     closure_t...> closure,
-		     first_closure_t first): ClosureContainer<
-    FunctionSignature<return_t,first_closure_t>,
-    closure_t...>(closure),first(first){}; 
+    using parent_t = ClosureContainer<
+      FunctionSignature<return_t,first_closure_t>,
+      closure_t...>;
 
-    //      ClosureHolder<>
+  public:
+    ClosureContainer(parent_t closure,
+		     first_closure_t first):
+      parent_t(closure),
+      first(first){}; 
+
     return_t operator()()const{
       return ClosureContainer<
 	FunctionSignature<return_t,first_closure_t>,
@@ -345,6 +408,37 @@ namespace mem_comparable_closure{
 	
     };
 
+    MemCompareInfo get_mem_compare_info(const void* next_obj,
+					mem_compare_continuation_fn_t continuation,
+					detail::IteratorStack& stack)const{
+      // saving continuation
+      new (stack.get_new<ComparisonIteratorBase>()) ComparisonIteratorBase{
+	.next_obj = next_obj,  
+	  .continuation_fn = continuation};
+      
+      MemCompareInfo info{
+	.next_obj = static_cast<const void*>(this),
+	  .continuation_fn = parent_t::continue_mem_compare_info,
+	  .obj  = static_cast<const void*>(&(this->first) ),
+	  .size = sizeof(first_closure_t)
+	  };
+      return info;
+    }
+    
+    static MemCompareInfo continue_mem_compare_info(detail::IteratorStack& stack,
+						    const void* obj){
+      auto self = static_cast<ClosureContainer<
+	FunctionSignature<return_t>,
+				first_closure_t,
+				closure_t...>* >(obj);
+      MemCompareInfo info{
+	.next_obj = obj,
+	  .continuation_fn = parent_t::continue_mem_compare_info,
+	  .obj  = static_cast<const void*>(&(self->first) ),
+	  .size =sizeof(first_closure_t)
+	  };
+      return info;
+    };
   private:
     first_closure_t first;
   };
@@ -365,13 +459,13 @@ namespace mem_comparable_closure{
     FunctionSignature<return_t,first_closure_t,first_arg_t, Args_t...>,
     closure_t...>
   {
+  private:
+    using parent_t = ClosureContainer<
+    FunctionSignature<return_t,first_closure_t,first_arg_t, Args_t...>,
+      closure_t...>;
   public:
-    ClosureContainer(ClosureContainer<
-		     FunctionSignature<return_t,first_closure_t, first_arg_t,Args_t...>,
-		     closure_t...> closure,
-		     first_closure_t first): ClosureContainer<
-    FunctionSignature<return_t,first_closure_t, first_arg_t, Args_t...>,
-    closure_t...>(closure),first(first){}; 
+    ClosureContainer(parent_t closure,
+		     first_closure_t first): parent_t(closure),first(first){}; 
 
     decltype(auto) bind(first_arg_t closed_arg) {
       return ClosureContainer<FunctionSignature<return_t, Args_t...>,
@@ -381,10 +475,38 @@ namespace mem_comparable_closure{
     }
 
     return_t operator()(first_arg_t first, Args_t... args)const{
-      return ClosureContainer<
-	FunctionSignature<return_t,first_closure_t, first_arg_t,Args_t...>,
-	closure_t...>::operator()(this->first,first,args... );
-	
+      return parent_t::operator()(this->first,first,args... );
+    };
+    MemCompareInfo get_mem_compare_info(const void* next_obj,
+					mem_compare_continuation_fn_t continuation,
+					detail::IteratorStack& stack)const{
+      // saving continuation
+      new (stack.get_new<ComparisonIteratorBase>()) ComparisonIteratorBase{
+	.next_obj = next_obj, 
+	  .continuation_fn = continuation};
+      
+      MemCompareInfo info{
+	.next_obj = static_cast<const void*>(this),
+	  .continuation_fn = parent_t::continue_mem_compare_info,
+	  .obj  = static_cast<const void*>(&(this->first) ),
+	  .size = sizeof(first_closure_t)
+	  };
+      return info;
+    }
+    
+    static MemCompareInfo continue_mem_compare_info(detail::IteratorStack& stack,
+const void* obj){
+      auto self = static_cast<const ClosureContainer<
+    FunctionSignature<return_t, first_arg_t,Args_t...>,
+				first_closure_t,
+				closure_t...>*>(obj);
+      MemCompareInfo info{
+	.next_obj = obj,
+	  .continuation_fn = parent_t::continue_mem_compare_info,
+	  .obj  = static_cast<const void*>(&(self->first) ),
+	  .size =sizeof(first_closure_t)
+	  };
+      return info;
     };
 
   private:
@@ -413,17 +535,7 @@ namespace mem_comparable_closure{
     MemCompareInfo get_mem_compare_info(const void* next_obj,
 					mem_compare_continuation_fn_t continuation,
 					detail::IteratorStack& stack)const{
-      // saving continuation
-      new (stack.get_new<ComparisonIteratorBase>()) ComparisonIteratorBase{
-	.next_obj = next_obj,  .
-	  continuation_fn = continuation};
-      MemCompareInfo info{
-	.next_obj = static_cast<const void*>(this),
-	  .continuation_fn = &ClosureHolder<FunctionSignature<return_t, T...>, M...>::continue_mem_compare_info,
-	  .obj  = static_cast<const void*>(&(this->closure_container) ),
-	  .size = sizeof(closure_container_t)
-	  };
-      return info;
+      return this->closure_container.get_mem_compare_info(next_obj,continuation,stack);
     };
 
     static MemCompareInfo continue_mem_compare_info(detail::IteratorStack& stack,

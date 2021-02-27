@@ -95,11 +95,27 @@ TEST_CASE("Closure"){
     int (*fn)(int,int) = [](int a, int b ) -> int { return a;};
     auto closure1 =ClosureMaker<int,int,int>::make(fn).bind(2).as_fun();
     auto closure2=ClosureMaker<int,int,int>::make(fn).bind(2).as_fun();;
-    auto closure3=ClosureMaker<int,int,int>::make(fn).bind(3).as_fun();;
-    //    auto mem_info1 = closure1.get_mem_compare_info();
-    //    auto mem_info2 = closure2.get_mem_compare_info();
-    //    auto mem_info3 = closure3.get_mem_compare_info();
+    auto closure3=ClosureMaker<int,int,int>::make(fn).bind(3).as_fun();
 
+    SUBCASE("home"){
+      using  mem_comparable_closure::detail::IteratorStack;
+      auto stack = IteratorStack();
+      
+      auto closure1 =ClosureMaker<int,int,int, int>::make([](int a, int b, int c ) -> int { return a;}).bind(2).bind(3).as_fun();
+      int counter = 1;
+      auto info = closure1.get_mem_compare_info(nullptr, nullptr, stack);
+      REQUIRE(static_cast<bool>(info.next_obj));
+      while ( true){
+	if (! info.next_obj ){
+	  break;
+	}else {
+	  counter +=1;
+	};
+	info = info.continuation_fn(stack, info.next_obj );
+      };
+      CHECK(counter ==3);
+      
+    };
     CHECK_FALSE(is_updated( closure1,closure2) );
     CHECK(is_identical(closure1,closure2));
     //    REQUIRE(mem_info1.size==mem_info2.size );
