@@ -1,0 +1,3 @@
+[submodule "mem_comparable_closure/libs/doctest"]
+	path = mem_comparable_closure/libs/doctest
+	url = https://github.com/onqtam/doctest.git
