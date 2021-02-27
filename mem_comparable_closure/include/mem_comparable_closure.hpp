@@ -44,10 +44,10 @@
 namespace mem_comparable_closure {
   namespace detail{
     
-    class StackAllocator{
+    class IteratorStack{
 
     public:
-      StackAllocator( ):size(0),max_size(256){
+      IteratorStack( ):size(0),max_size(256){
 	this->stack_base = reinterpret_cast<char*>(std::aligned_alloc(MAX_SCALAR_ALIGNMENT,256));
 	if (!this->stack_base)throw std::bad_alloc();
 	
@@ -68,18 +68,21 @@ namespace mem_comparable_closure {
       }
       
       template<class T>
-      T* get_last(){
+      T& get_last(){
 	assert(this->size >= this->calculate_size_increase<T>());
-	return reinterpret_cast<T*>( this->stack_base+ ( this->size - this->calculate_size_increase<T>()) );
+	return *reinterpret_cast<T*>(this->stack_base+ ( this->size - this->calculate_size_increase<T>()) );
       }
+      
       
       template<class T>
-      void pop_last(){
+      T pop_last(){
 	assert(this->size>= this->calculate_size_increase<T>());
+	const T ret = this->get_last<T>();
 	this->size -= this->calculate_size_increase<T>();
+	return ret;
       }
       
-      ~StackAllocator(){
+      ~IteratorStack(){
 	std::free(this->stack_base);
       };
       
@@ -219,7 +222,7 @@ namespace mem_comparable_closure{
 namespace mem_comparable_closure{
   struct  MemCompareInfo{
     const void* next_obj;
-    MemCompareInfo(*continuation_fn)(detail::StackAllocator&, const void*);
+    MemCompareInfo(*continuation_fn)(detail::IteratorStack&, const void*);
     const void* obj;
     std::size_t size;
   };
@@ -240,7 +243,7 @@ namespace mem_comparable_closure{
     virtual return_t operator()(Args_t... )const =0;
     virtual MemCompareInfo get_mem_compare_info(const void* next_obj,
 						mem_compare_continuation_fn_t continuation,
-						detail::StackAllocator& stack)const=0;
+						detail::IteratorStack& stack)const=0;
     virtual ~ClosureBase(){};
   };
     
@@ -252,7 +255,7 @@ namespace mem_comparable_closure{
     Fun( ClosureBase<return_t, Args_t...>* closure ): closure(closure){};
     MemCompareInfo get_mem_compare_info(void* next_obj,
 					mem_compare_continuation_fn_t continuation,
-					detail::StackAllocator& stack) const {
+					detail::IteratorStack& stack) const {
       return this->closure->get_mem_compare_info(next_obj, continuation, stack);
     };
 
@@ -409,8 +412,8 @@ namespace mem_comparable_closure{
       
     MemCompareInfo get_mem_compare_info(const void* next_obj,
 					mem_compare_continuation_fn_t continuation,
-					detail::StackAllocator& stack)const{
-      // saving 
+					detail::IteratorStack& stack)const{
+      // saving continuation
       new (stack.get_new<ComparisonIteratorBase>()) ComparisonIteratorBase{
 	.next_obj = next_obj,  .
 	  continuation_fn = continuation};
@@ -423,17 +426,18 @@ namespace mem_comparable_closure{
       return info;
     };
 
-    static MemCompareInfo continue_mem_compare_info(detail::StackAllocator& stack,
+    static MemCompareInfo continue_mem_compare_info(detail::IteratorStack& stack,
 						    const void* obj){
+      auto saved = stack.pop_last<ComparisonIteratorBase>();
       MemCompareInfo info{
-	.next_obj = stack.get_last<ComparisonIteratorBase>()->next_obj,
-	  .continuation_fn = stack.get_last<ComparisonIteratorBase>()-> continuation_fn,
+	.next_obj = saved.next_obj,
+	  .continuation_fn = saved.continuation_fn,
 	  .obj  = nullptr,
 	  .size =0
 	  };
-      stack.pop_last<ComparisonIteratorBase>();
       return info;
-    };
+    };      
+
   private:
     closure_container_t closure_container;
   };
@@ -516,18 +520,25 @@ namespace mem_comparable_closure {
 
   namespace detail {
       
-    bool is_identical_object(MemCompareInfo& info1, MemCompareInfo& info2);
-  }
+    inline bool is_identical_object(MemCompareInfo& info1, MemCompareInfo& info2){
+      if (info1.size != info2.size)return false;
+      
+      assert(info1.size == info2.size);
+      if(std::memcmp(info1.obj,info2.obj, info2.size) !=0 ) return false;
+      
+      return true;
+    };
+    
+  };
+
   template<class Fun1_t, class Fun2_t>
   bool is_identical(Fun1_t& fun1, Fun2_t& fun2 ){
     constexpr auto is_null = [](const void* ptr)->bool {return ! ptr;}; 
       
     if (! std::is_same<Fun1_t, Fun2_t>::value ) return false;
-
-      
-      
-    auto stack1 = detail::StackAllocator{};
-    auto stack2 = detail::StackAllocator{};
+    
+    auto stack1 = detail::IteratorStack{};
+    auto stack2 = detail::IteratorStack{};
     MemCompareInfo info1 = fun1.get_mem_compare_info(nullptr,nullptr,stack1);
     MemCompareInfo info2 = fun2.get_mem_compare_info(nullptr,nullptr,stack2);
  

@@ -16,7 +16,6 @@ project "mem_comparable_closure"
     buildoptions { "-Wall", "-Wno-unused-local-typedef"}
     optimize "Full"
     filter "Test"
-        filename "Test"
         files {"test/*.cpp"}
 	includedirs "libs/doctest/doctest"
 	targetdir "bin/Test"
