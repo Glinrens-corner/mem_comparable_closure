@@ -1,10 +1,10 @@
 #include "doctest.h"
 
-#include "transparent_closure.hpp"
+#include "mem_comparable_closure.hpp"
 #include <type_traits>
 
 TEST_CASE("StackAllocator"){
-  using  fluxpp::transparent_closure::detail::StackAllocator;
+  using  mem_comparable_closure::detail::StackAllocator;
   SUBCASE("basic test"){
     StackAllocator stack{};
     
@@ -50,12 +50,11 @@ TEST_CASE("StackAllocator"){
 
 
 TEST_CASE("Closure"){
-  using namespace fluxpp;
+  using namespace mem_comparable_closure;
 
 
 
   SUBCASE("creation"){
-    using namespace transparent_closure;
     using closure_t = Closure<
       FunctionSignature<int,int,int> >;
 
@@ -77,7 +76,6 @@ TEST_CASE("Closure"){
 
   };
   SUBCASE("Metaprogramming Errors"){ 
-    using namespace transparent_closure;
     // we would need to check that this gives an compiler error
     //    using h = test::check_transparency<int&>;
     // this however does not.
@@ -90,7 +88,6 @@ TEST_CASE("Closure"){
   };
 					    
   SUBCASE("check equality"){
-    using namespace transparent_closure;
     int (*fn)(int,int) = [](int a, int b ) -> int { return a;};
     auto closure1 =ClosureMaker<int,int,int>::make(fn).bind(2).as_fun();
     auto closure2=ClosureMaker<int,int,int>::make(fn).bind(2).as_fun();;
