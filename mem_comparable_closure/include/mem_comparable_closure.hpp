@@ -128,67 +128,110 @@ namespace mem_comparable_closure {
 }
 
 // Metaprogramming tests
+// MemCompareInfo
 namespace mem_comparable_closure{
-  namespace test {
+    struct  MemCompareInfo{
+    const void* next_obj;
+    MemCompareInfo(*continuation_fn)(detail::IteratorStack&, const void*);
+    const void* obj;
+    std::size_t size;
+  };
+
+    
+    
+  using mem_compare_continuation_fn_t = decltype(MemCompareInfo::continuation_fn);
+
+  namespace  concepts {
+    // note this is trivial in the mem_comparable_closure sense
+    // a trivial type can be compared simply by memcmp'ing it.
+    // so no padding, no pointers
+    template<class T>
+    struct is_trivial: std::false_type { };
+
+    // a member_accessible type has a method get_members()
+    //which returns a std::tuple of pointers to its data_members 
+    template<class T>
+    struct is_member_accessible: std::false_type {};
+
+    // a protocol_compatible type has a
+    //  MemCompareInfo get_mem_compare_info(const void* next_obj,
+    //                        mem_compare_continuation_fn_t continuation,
+    //                        detail::IteratorStack& stack)const
+    // method.
+    template<class T>
+    struct is_protocol_compatible: std::false_type{};
+
+
+    
     // is tansparent  effectively alialises to true_type or false_type
     // this is different from check_transparency
       
-    template<class T>
+    template<class T, class enable = void>
     struct is_transparent : std::false_type{ };
-      
-      
-    template<>
-    struct is_transparent<bool> :std::true_type{};
-    template<>
-    struct is_transparent<char> :std::true_type{};
-    template<>
-    struct is_transparent<unsigned char> :std::true_type{};
-    template<>
-    struct is_transparent<signed char> :std::true_type{};
 
-    template<>
-    struct is_transparent<int> :std::true_type{};
-    template<>
-    struct is_transparent<unsigned int> :std::true_type{};
-    //      template<>
-    //      struct is_transparent<signed int> :std::true_type{};
+    template<class T >
+    struct is_transparent<T, typename std::enable_if<
+			       is_trivial<T>::value
+			       or is_member_accessible<T>::value
+			       or is_protocol_compatible<T>::value
 
-    template<>
-    struct is_transparent<short int> :std::true_type{};
-    template<>
-    struct is_transparent<unsigned short int> :std::true_type{};
-    //      template<>
-    //      struct is_transparent<signed short int> :std::true_type{};
-      
-    template<>
-    struct is_transparent<long int> :std::true_type{};
-    template<>
-    struct is_transparent<unsigned long int> :std::true_type{};
-    //      template<>
-    //      struct is_transparent<signed long int> :std::true_type{};
-
-
-    template<>
-    struct is_transparent<long long int> :std::true_type{};
-    template<>
-    struct is_transparent<unsigned long long int> :std::true_type{};
-    //      template<>
-    //      struct is_transparent<signed long long int> :std::true_type{};
-
-    template<>
-    struct is_transparent<float> :std::true_type{};
-    template<>
-    struct is_transparent<double> :std::true_type{};
-      
-    template<>
-    struct is_transparent<long double> :std::true_type{};
-    template<>
-    struct is_transparent<wchar_t> :std::true_type{};
+			       >::type>: std::true_type {};
      
       
 
   }
+  
+  namespace concepts {
+    template<>
+    struct is_trivial<bool> :std::true_type{};
+    template<>
+    struct is_trivial<char> :std::true_type{};
+    template<>
+    struct is_trivial<unsigned char> :std::true_type{};
+    template<>
+    struct is_trivial<signed char> :std::true_type{};
+
+    template<>
+    struct is_trivial<int> :std::true_type{};
+    template<>
+    struct is_trivial<unsigned int> :std::true_type{};
+    //      template<>
+    //      struct is_trivial<signed int> :std::true_type{};
+
+    template<>
+    struct is_trivial<short int> :std::true_type{};
+    template<>
+    struct is_trivial<unsigned short int> :std::true_type{};
+    //      template<>
+    //      struct is_trivial<signed short int> :std::true_type{};
       
+    template<>
+    struct is_trivial<long int> :std::true_type{};
+    template<>
+    struct is_trivial<unsigned long int> :std::true_type{};
+    //      template<>
+    //      struct is_trivial<signed long int> :std::true_type{};
+
+
+    template<>
+    struct is_trivial<long long int> :std::true_type{};
+    template<>
+    struct is_trivial<unsigned long long int> :std::true_type{};
+    //      template<>
+    //      struct is_trivial<signed long long int> :std::true_type{};
+
+    template<>
+    struct is_trivial<float> :std::true_type{};
+    template<>
+    struct is_trivial<double> :std::true_type{};
+      
+    template<>
+    struct is_trivial<long double> :std::true_type{};
+    template<>
+    struct is_trivial<wchar_t> :std::true_type{};
+   
+  }
+  
   namespace error{
     class ignore{};
     template<class T, class enable=void>
@@ -196,7 +239,7 @@ namespace mem_comparable_closure{
     };
       
     template<class T >
-    struct is_not_transparent<T, typename std::enable_if<test::is_transparent<T>::value, void>::type>{
+    struct is_not_transparent<T, typename std::enable_if<concepts::is_transparent<T>::value, void>::type>{
       using type = std::false_type;
     };
       
@@ -207,12 +250,31 @@ namespace mem_comparable_closure{
   namespace test{
     // check_transparent generates a compiltime error if T is not transparent
     template<class T>
-    using check_transparency = typename  error::is_not_transparent<T>::type;
+    using check_transparency = typename  error::is_not_transparent<T>::type;	
+  }
+  namespace detail {
+    template<class T>
+    typename std::enable_if<concepts::is_trivial<T>::value, MemCompareInfo>::type
+    get_mem_compare_info(const T* obj,
+			 const void* next_obj,
+			 mem_compare_continuation_fn_t continuation_fn,
+			 detail::IteratorStack& stack){
+      return MemCompareInfo{
+	.next_obj = next_obj,
+	  .continuation_fn = continuation_fn,
+	  .obj  = static_cast<const void*>(obj),
+	  .size =sizeof(T)
+	  };
+    };
 
-      
-
-      
-	
+    template<class T>
+    typename std::enable_if<concepts::is_protocol_compatible<T>::value, MemCompareInfo>::type
+    get_mem_compare_info(const T* obj,
+			 const void* next_obj,
+			 mem_compare_continuation_fn_t continuation_fn,
+			 detail::IteratorStack& stack){
+      return obj->get_mem_compare_info(next_obj,continuation_fn,stack );
+    };
   }
 }
 
@@ -220,18 +282,6 @@ namespace mem_comparable_closure{
 // ClosureBase
 // Fun
 namespace mem_comparable_closure{
-  struct  MemCompareInfo{
-    const void* next_obj;
-    MemCompareInfo(*continuation_fn)(detail::IteratorStack&, const void*);
-    const void* obj;
-    std::size_t size;
-  };
-
-  template <class T, class enable = void>
-  struct MemCompareAdapter;
-    
-    
-  using mem_compare_continuation_fn_t = decltype(MemCompareInfo::continuation_fn);
     
   struct ComparisonIteratorBase {
     const void * next_obj;
@@ -246,6 +296,10 @@ namespace mem_comparable_closure{
 						detail::IteratorStack& stack)const=0;
     virtual ~ClosureBase(){};
   };
+  template<class ... T>
+  struct concepts::is_protocol_compatible<ClosureBase<T...>>
+    : std::true_type{ };
+
     
   template<class return_t, class ... Args_t>
   class Fun{
@@ -253,7 +307,7 @@ namespace mem_comparable_closure{
     using test_tuple_t = std::tuple<test::check_transparency<Args_t>...>; 
   public:
     Fun( ClosureBase<return_t, Args_t...>* closure ): closure(closure){};
-    MemCompareInfo get_mem_compare_info(void* next_obj,
+    MemCompareInfo get_mem_compare_info(const void* next_obj,
 					mem_compare_continuation_fn_t continuation,
 					detail::IteratorStack& stack) const {
       return this->closure->get_mem_compare_info(next_obj, continuation, stack);
@@ -273,6 +327,10 @@ namespace mem_comparable_closure{
     ClosureBase<return_t, Args_t...>* closure;
   };
 
+  template<class ... T>
+  struct concepts::is_protocol_compatible<Fun<T...>>
+    : std::true_type{ };
+
 }
 
 // ClosureContainer
@@ -283,7 +341,6 @@ namespace mem_comparable_closure{
   template <class T>
   using remove_cvref = std::remove_cv<typename std::remove_reference<T>::type>;
 
-  
   //BaseContainer (wraps only a function pointer)
   // the function has no arguments
   template<class return_t  >
@@ -415,14 +472,10 @@ namespace mem_comparable_closure{
       new (stack.get_new<ComparisonIteratorBase>()) ComparisonIteratorBase{
 	.next_obj = next_obj,  
 	  .continuation_fn = continuation};
-      
-      MemCompareInfo info{
-	.next_obj = static_cast<const void*>(this),
-	  .continuation_fn = parent_t::continue_mem_compare_info,
-	  .obj  = static_cast<const void*>(&(this->first) ),
-	  .size = sizeof(first_closure_t)
-	  };
-      return info;
+      return detail::get_mem_compare_info(&(this->first),
+					  static_cast<const void*>(this),
+					  parent_t::continue_mem_compare_info,
+					  stack);
     }
     
     static MemCompareInfo continue_mem_compare_info(detail::IteratorStack& stack,
@@ -431,13 +484,10 @@ namespace mem_comparable_closure{
 	FunctionSignature<return_t>,
 				first_closure_t,
 				closure_t...>* >(obj);
-      MemCompareInfo info{
-	.next_obj = obj,
-	  .continuation_fn = parent_t::continue_mem_compare_info,
-	  .obj  = static_cast<const void*>(&(self->first) ),
-	  .size =sizeof(first_closure_t)
-	  };
-      return info;
+      return detail::get_mem_compare_info(&(self->first),
+				  obj,
+				  parent_t::continue_mem_compare_info,
+				  stack);;
     };
   private:
     first_closure_t first;
@@ -484,14 +534,10 @@ namespace mem_comparable_closure{
       new (stack.get_new<ComparisonIteratorBase>()) ComparisonIteratorBase{
 	.next_obj = next_obj, 
 	  .continuation_fn = continuation};
-      
-      MemCompareInfo info{
-	.next_obj = static_cast<const void*>(this),
-	  .continuation_fn = parent_t::continue_mem_compare_info,
-	  .obj  = static_cast<const void*>(&(this->first) ),
-	  .size = sizeof(first_closure_t)
-	  };
-      return info;
+      return detail::get_mem_compare_info(&(this->first),
+					  static_cast<const void*>(this),
+					  parent_t::continue_mem_compare_info,
+					  stack);;
     }
     
     static MemCompareInfo continue_mem_compare_info(detail::IteratorStack& stack,
@@ -500,19 +546,19 @@ const void* obj){
     FunctionSignature<return_t, first_arg_t,Args_t...>,
 				first_closure_t,
 				closure_t...>*>(obj);
-      MemCompareInfo info{
-	.next_obj = obj,
-	  .continuation_fn = parent_t::continue_mem_compare_info,
-	  .obj  = static_cast<const void*>(&(self->first) ),
-	  .size =sizeof(first_closure_t)
-	  };
-      return info;
+      return detail::get_mem_compare_info(&(self->first),
+				  obj,
+				  parent_t::continue_mem_compare_info,
+				  stack);;
     };
 
   private:
     first_closure_t first;
   };
 
+  template<class ... T>
+  struct concepts::is_protocol_compatible<ClosureContainer<T...>>
+    : std::true_type{ };
 };
 
 // ClosureHolder
@@ -537,7 +583,7 @@ namespace mem_comparable_closure{
 					detail::IteratorStack& stack)const{
       return this->closure_container.get_mem_compare_info(next_obj,continuation,stack);
     };
-
+    
     static MemCompareInfo continue_mem_compare_info(detail::IteratorStack& stack,
 						    const void* obj){
       auto saved = stack.pop_last<ComparisonIteratorBase>();
