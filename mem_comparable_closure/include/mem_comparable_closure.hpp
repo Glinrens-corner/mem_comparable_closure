@@ -34,24 +34,39 @@
  * 
  */
 
-// we simply assume that all scalar types are ok with being 64 byte aligned
+/*
+ *the algorithm: 
+ *   at the heart of the algorithm is memcmp
+ *   but memcmp has its limit will declare two vectors 
+ *   as unequal as it only compares the content of the strucs which contain  pointers to different memories.
+ *   so needed was an algorithm to walk the object tree.
+ *   to walk a tree in O(Nnodes) time we need a stack. 
+ *     this is the Iterator stack.
+ *     any iteration counter lives on the iterator stack.
+ *     however I don't make any assumption on what an iterator is.
+ *     So the stack works more like an allocator.
+ *    next we could just always call functions and the call stack 
+ *    could follow the iterator stack.
+ *    however then the iterator stack would need to keep track of where it is currently.
+ *      instead each function passes around a pointer to the next function and the next object. 
+ */
 
+
+
+
+// we simply assume that all scalar types are ok with being 16 byte aligned
 #define MAX_SCALAR_ALIGNMENT 16
 
 
-  
-// FunctionSignature
+// IteratorStack  
 namespace mem_comparable_closure {
-  namespace detail{
+  namespace algorithm{
     
     class IteratorStack{
-
     public:
       IteratorStack( ):size(0),max_size(256){
 	this->stack_base = reinterpret_cast<char*>(std::aligned_alloc(MAX_SCALAR_ALIGNMENT,256));
 	if (!this->stack_base)throw std::bad_alloc();
-	
-	  
       };
       
       template<class T>
@@ -73,7 +88,6 @@ namespace mem_comparable_closure {
 	return *reinterpret_cast<T*>(this->stack_base+ ( this->size - this->calculate_size_increase<T>()) );
       }
       
-      
       template<class T>
       T pop_last(){
 	assert(this->size>= this->calculate_size_increase<T>());
@@ -85,7 +99,6 @@ namespace mem_comparable_closure {
       ~IteratorStack(){
 	std::free(this->stack_base);
       };
-      
       
     private:
       template <class T>
@@ -117,6 +130,10 @@ namespace mem_comparable_closure {
       std::size_t max_size;
     };
   };
+};
+
+// FunctionSignature
+namespace mem_comparable_closure {
 
   template<class return_t, class ...argument_t>
   struct FunctionSignature{
@@ -124,22 +141,22 @@ namespace mem_comparable_closure {
     using function_ptr_type = return_t(*)(argument_t...); 
     using return_type = return_t;
   };
-  
 }
 
 // Metaprogramming tests
 // MemCompareInfo
 namespace mem_comparable_closure{
+  namespace algorithm{ 
     struct  MemCompareInfo{
-    const void* next_obj;
-    MemCompareInfo(*continuation_fn)(detail::IteratorStack&, const void*);
-    const void* obj;
-    std::size_t size;
-  };
-
+      const void* next_obj;
+      MemCompareInfo(*continuation_fn)(IteratorStack&, const void*);
+      const void* obj;
+      std::size_t size;
+    };
+    using mem_compare_continuation_fn_t = decltype(MemCompareInfo::continuation_fn);
+  }
     
     
-  using mem_compare_continuation_fn_t = decltype(MemCompareInfo::continuation_fn);
 
   namespace  concepts {
     // note this is trivial in the mem_comparable_closure sense
@@ -254,13 +271,23 @@ namespace mem_comparable_closure{
     template<class T>
     using check_transparency = typename  error::is_not_transparent<T>::type;	
   }
-  namespace detail {
+  
+  namespace algorithm {
+    namespace detail{
+      struct ComparisonIteratorBase {
+	const void * next_obj;
+	mem_compare_continuation_fn_t  continuation_fn;
+      };
+    }
+  }
+  
+  namespace algorithm {
     template<class T>
     typename std::enable_if<concepts::is_trivial<T>::value, MemCompareInfo>::type
     get_mem_compare_info(const T* obj,
 			 const void* next_obj,
 			 mem_compare_continuation_fn_t continuation_fn,
-			 detail::IteratorStack& stack){
+			 IteratorStack& stack){
       return MemCompareInfo{
 	.next_obj = next_obj,
 	  .continuation_fn = continuation_fn,
@@ -274,9 +301,27 @@ namespace mem_comparable_closure{
     get_mem_compare_info(const T* obj,
 			 const void* next_obj,
 			 mem_compare_continuation_fn_t continuation_fn,
-			 detail::IteratorStack& stack){
+			 IteratorStack& stack){
       return obj->get_mem_compare_info(next_obj,continuation_fn,stack );
     };
+    /*
+    namespace detail{
+      template <std::size_t, class tuple_t>
+      MemCompareInfo get_mem_compare_info(
+
+    }
+    
+    template<class T>
+    typename std::enable_if<concepts::is_member_accessible<T>::value, MemCompareInfo>::type
+    get_mem_compare_info(const T* obj,
+			 const void* next_obj,
+			 mem_compare_continuation_fn_t continuation_fn,
+			 IteratorStack& stack){
+      return detail::get_mem_compare_info_tuple<0>(next_obj->get_member_access(),
+						continuation_fn,
+						stack);
+    };
+    */
   }
 }
 
@@ -284,20 +329,19 @@ namespace mem_comparable_closure{
 // ClosureBase
 // Fun
 namespace mem_comparable_closure{
-    
-  struct ComparisonIteratorBase {
-    const void * next_obj;
-    mem_compare_continuation_fn_t  continuation_fn;
-  };
-
+  using  algorithm::mem_compare_continuation_fn_t;
+  using  algorithm::IteratorStack;
+  using  algorithm::MemCompareInfo;
+  
   template<class return_t , class ...Args_t>
   struct ClosureBase{
     virtual return_t operator()(Args_t... )const =0;
     virtual MemCompareInfo get_mem_compare_info(const void* next_obj,
 						mem_compare_continuation_fn_t continuation,
-						detail::IteratorStack& stack)const=0;
+						IteratorStack& stack)const=0;
     virtual ~ClosureBase(){};
   };
+  
   template<class ... T>
   struct concepts::is_protocol_compatible<ClosureBase<T...>>
     : std::true_type{ };
@@ -311,12 +355,10 @@ namespace mem_comparable_closure{
     Fun( ClosureBase<return_t, Args_t...>* closure ): closure(closure){};
     MemCompareInfo get_mem_compare_info(const void* next_obj,
 					mem_compare_continuation_fn_t continuation,
-					detail::IteratorStack& stack) const {
+				        IteratorStack& stack) const {
       return this->closure->get_mem_compare_info(next_obj, continuation, stack);
     };
-
-     
-      
+    
     return_t operator()(Args_t... args)const{
       return this->closure->operator()(args...);
     };
@@ -356,7 +398,8 @@ namespace mem_comparable_closure{
 
     MemCompareInfo get_mem_compare_info(const void* next_obj,
 					mem_compare_continuation_fn_t continuation,
-					detail::IteratorStack& stack)const{
+				        IteratorStack& stack)const{
+      using algorithm::detail::ComparisonIteratorBase;
       // saving continuation
       new (stack.get_new<ComparisonIteratorBase>()) ComparisonIteratorBase{
 	.next_obj = next_obj,  
@@ -370,8 +413,9 @@ namespace mem_comparable_closure{
       return info;
     }
 
-    static MemCompareInfo continue_mem_compare_info(detail::IteratorStack& stack,
+    static MemCompareInfo continue_mem_compare_info(IteratorStack& stack,
 						    const void* obj){
+      using algorithm::detail::ComparisonIteratorBase;
       auto saved = stack.pop_last<ComparisonIteratorBase>();
       MemCompareInfo info{
 	.next_obj = saved.next_obj,
@@ -400,7 +444,8 @@ namespace mem_comparable_closure{
   
     MemCompareInfo get_mem_compare_info(const void* next_obj,
 					mem_compare_continuation_fn_t continuation,
-					detail::IteratorStack& stack)const{
+				        IteratorStack& stack)const{
+      using algorithm::detail::ComparisonIteratorBase;
       // saving continuation
       new (stack.get_new<ComparisonIteratorBase>()) ComparisonIteratorBase{
 	.next_obj = next_obj,  
@@ -415,8 +460,9 @@ namespace mem_comparable_closure{
       return info;
     }
    
-    static MemCompareInfo continue_mem_compare_info(detail::IteratorStack& stack,
+    static MemCompareInfo continue_mem_compare_info(IteratorStack& stack,
 						    const void* obj){
+      using algorithm::detail::ComparisonIteratorBase;
       auto saved = stack.pop_last<ComparisonIteratorBase>();
       MemCompareInfo info{
 	.next_obj = saved.next_obj,
@@ -469,27 +515,29 @@ namespace mem_comparable_closure{
 
     MemCompareInfo get_mem_compare_info(const void* next_obj,
 					mem_compare_continuation_fn_t continuation,
-					detail::IteratorStack& stack)const{
+				        IteratorStack& stack)const{
+      using algorithm::detail::ComparisonIteratorBase;
       // saving continuation
       new (stack.get_new<ComparisonIteratorBase>()) ComparisonIteratorBase{
 	.next_obj = next_obj,  
 	  .continuation_fn = continuation};
-      return detail::get_mem_compare_info(&(this->first),
-					  static_cast<const void*>(this),
-					  parent_t::continue_mem_compare_info,
-					  stack);
+      return algorithm::get_mem_compare_info(&(this->first),
+					     static_cast<const void*>(this),
+					     parent_t::continue_mem_compare_info,
+					     stack);
     }
     
-    static MemCompareInfo continue_mem_compare_info(detail::IteratorStack& stack,
+    static MemCompareInfo continue_mem_compare_info(IteratorStack& stack,
 						    const void* obj){
+      using algorithm::detail::ComparisonIteratorBase;
       auto self = static_cast<ClosureContainer<
 	FunctionSignature<return_t>,
 				first_closure_t,
 				closure_t...>* >(obj);
-      return detail::get_mem_compare_info(&(self->first),
-				  obj,
-				  parent_t::continue_mem_compare_info,
-				  stack);;
+      return algorithm::get_mem_compare_info(&(self->first),
+					     obj,
+					     parent_t::continue_mem_compare_info,
+					     stack);;
     };
   private:
     first_closure_t first;
@@ -531,24 +579,25 @@ namespace mem_comparable_closure{
     };
     MemCompareInfo get_mem_compare_info(const void* next_obj,
 					mem_compare_continuation_fn_t continuation,
-					detail::IteratorStack& stack)const{
+					IteratorStack& stack)const{
+      using algorithm::detail::ComparisonIteratorBase;
       // saving continuation
       new (stack.get_new<ComparisonIteratorBase>()) ComparisonIteratorBase{
 	.next_obj = next_obj, 
 	  .continuation_fn = continuation};
-      return detail::get_mem_compare_info(&(this->first),
+      return algorithm::get_mem_compare_info(&(this->first),
 					  static_cast<const void*>(this),
 					  parent_t::continue_mem_compare_info,
 					  stack);;
     }
     
-    static MemCompareInfo continue_mem_compare_info(detail::IteratorStack& stack,
+    static MemCompareInfo continue_mem_compare_info(IteratorStack& stack,
 const void* obj){
       auto self = static_cast<const ClosureContainer<
     FunctionSignature<return_t, first_arg_t,Args_t...>,
 				first_closure_t,
 				closure_t...>*>(obj);
-      return detail::get_mem_compare_info(&(self->first),
+      return algorithm::get_mem_compare_info(&(self->first),
 				  obj,
 				  parent_t::continue_mem_compare_info,
 				  stack);;
@@ -582,20 +631,21 @@ namespace mem_comparable_closure{
       
     MemCompareInfo get_mem_compare_info(const void* next_obj,
 					mem_compare_continuation_fn_t continuation,
-					detail::IteratorStack& stack)const{
+					IteratorStack& stack)const{
+      
       return this->closure_container.get_mem_compare_info(next_obj,continuation,stack);
     };
     
-    static MemCompareInfo continue_mem_compare_info(detail::IteratorStack& stack,
+    static MemCompareInfo continue_mem_compare_info(IteratorStack& stack,
 						    const void* obj){
+      using algorithm::detail::ComparisonIteratorBase;
       auto saved = stack.pop_last<ComparisonIteratorBase>();
-      MemCompareInfo info{
+      return MemCompareInfo{
 	.next_obj = saved.next_obj,
 	  .continuation_fn = saved.continuation_fn,
 	  .obj  = nullptr,
 	  .size =0
 	  };
-      return info;
     };      
 
   private:
@@ -697,8 +747,8 @@ namespace mem_comparable_closure {
       
     if (! std::is_same<Fun1_t, Fun2_t>::value ) return false;
     
-    auto stack1 = detail::IteratorStack{};
-    auto stack2 = detail::IteratorStack{};
+    auto stack1 = algorithm::IteratorStack{};
+    auto stack2 = algorithm::IteratorStack{};
     MemCompareInfo info1 = fun1.get_mem_compare_info(nullptr,nullptr,stack1);
     MemCompareInfo info2 = fun2.get_mem_compare_info(nullptr,nullptr,stack2);
  

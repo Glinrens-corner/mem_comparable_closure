@@ -13,8 +13,8 @@ TEST_CASE("vector" ){
 
 
   auto vec = std::vector<int>{};
-  auto stack = detail::IteratorStack{};
-  detail::get_mem_compare_info(&vec,nullptr,nullptr, stack);
+  auto stack = algorithm::IteratorStack{};
+  algorithm::get_mem_compare_info(&vec,nullptr,nullptr, stack);
 
 
 

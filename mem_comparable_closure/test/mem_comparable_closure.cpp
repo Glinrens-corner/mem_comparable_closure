@@ -5,7 +5,7 @@
 #include <array>
 
 TEST_CASE("IteratorStack"){
-  using  mem_comparable_closure::detail::IteratorStack;
+  using  mem_comparable_closure::algorithm::IteratorStack;
   SUBCASE("basic test"){
     IteratorStack stack{};
     
@@ -98,7 +98,7 @@ TEST_CASE("Closure"){
     auto closure3=ClosureMaker<int,int,int>::make(fn).bind(3).as_fun();
 
     SUBCASE("home"){
-      using  mem_comparable_closure::detail::IteratorStack;
+      using  mem_comparable_closure::algorithm::IteratorStack;
       auto stack = IteratorStack();
       
       auto closure1 =ClosureMaker<int,int,int, int>::make([](int a, int b, int c ) -> int { return a;}).bind(2).bind(3).as_fun();
