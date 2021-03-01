@@ -161,8 +161,10 @@ namespace mem_comparable_closure{
     template<class T>
     struct is_protocol_compatible: std::false_type{};
 
-
-    
+    // is_specialized means there is a specialized version of
+    // detail::get_mem_compare_info for this type
+    template <class T>
+    struct is_specialized:std::false_type{};
     // is tansparent  effectively alialises to true_type or false_type
     // this is different from check_transparency
       
