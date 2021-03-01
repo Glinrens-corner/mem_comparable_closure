@@ -36,7 +36,7 @@
 
 // we simply assume that all scalar types are ok with being 64 byte aligned
 
-#define MAX_SCALAR_ALIGNMENT 64
+#define MAX_SCALAR_ALIGNMENT 16
 
 
   
