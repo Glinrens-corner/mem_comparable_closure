@@ -63,9 +63,10 @@ namespace mem_comparable_closure {
   namespace algorithm{
     
     class IteratorStack{
+      static constexpr  std::size_t init_max_size() { return 256;};
     public:
-      IteratorStack( ):size(0),max_size(256){
-	this->stack_base = reinterpret_cast<char*>(std::aligned_alloc(MAX_SCALAR_ALIGNMENT,256));
+      IteratorStack( ):size(0),max_size(init_max_size()){
+	this->stack_base = reinterpret_cast<char*>(std::aligned_alloc(MAX_SCALAR_ALIGNMENT,init_max_size()));
 	if (!this->stack_base)throw std::bad_alloc();
       };
       
@@ -120,7 +121,7 @@ namespace mem_comparable_closure {
       }
       
     public:// for testing
-      constexpr static std::size_t get_init_max_size(){return 256; };
+      constexpr static std::size_t get_init_max_size(){return init_max_size(); };
       std::size_t get_size()const{return this->size;};
       std::size_t get_max_size()const{return this->max_size;};
       char* get_stack_base()const{return this->stack_base;};
