@@ -2,6 +2,7 @@
 #define MEM_COMPARABLE_CLOSURE_HPP
 #include <cstring>
 #include <new>
+#include <tuple>
 #include <cstdlib>
 #include <utility>
 #include <type_traits>
@@ -328,21 +329,10 @@ namespace mem_comparable_closure{
 
       template<class T>
       constexpr std::size_t member_tuple_size () {
-	using tuple_t = typename std::invoke_result<typename T::get_member_tuple>::type;
+	using tuple_t = decltype(static_cast<T*>(nullptr)->get_member_access());
 	return std::tuple_size<tuple_t>::value;
       };
       
-      template<std::size_t i, class T>
-      typename std::enable_if<(i< member_tuple_size<T>()), MemCompareInfo>::type
-      get_mem_compare_info_member_tuple(IteratorStack& stack,
-					const void* vobj){
-	T* obj = static_cast<T*>(vobj );
-	auto  member_ptr = std::get<i>(obj->get_member_access()) ;
-	return get_mem_compare_info(member_ptr,
-				    vobj,
-				    get_mem_compare_info_member_tuple<i+1,T>,
-				    stack);
-      };
 
 
       template<std::size_t i, class T>
@@ -358,25 +348,43 @@ namespace mem_comparable_closure{
 	  
 	};
       };
+
       
-      
-      template<class T>
-      typename std::enable_if<concepts::is_member_accessible<T>::value, MemCompareInfo>::type
-      get_mem_compare_info(const T* obj,
-			   const void* next_obj,
-			   mem_compare_continuation_fn_t continuation_fn,
-			   IteratorStack& stack){
-	new (stack.get_new<TupleIterator>( )) TupleIterator{
-	  .next_obj = next_obj,
-	    .continuation_fn = continuation_fn,
-	    .next_element = 0
-	    };
-	
-	return get_mem_compare_info_member_tuple<0, T>(stack,
-						       static_cast<void* >(obj));
+      template<std::size_t i, class T>
+      typename std::enable_if<(i< member_tuple_size<T>()), MemCompareInfo>::type
+      get_mem_compare_info_member_tuple(IteratorStack& stack,
+					const void* vobj){
+	const T* obj = static_cast<const T*>(vobj );
+	using member_ptr_t = typename std::tuple_element<i, decltype(obj->get_member_access())>::type;
+	static_assert(not std::is_same<member_ptr_t, typename std::remove_pointer<member_ptr_t>::type>::value, "this class returns a non-pointer in the tuple of get_member_access");
+        auto  member_ptr = std::get<i>(obj->get_member_access()) ;
+        MemCompareInfo (*fn)(IteratorStack&, const void* ) = get_mem_compare_info_member_tuple<i+1,T>; 
+	return get_mem_compare_info(member_ptr,
+				    vobj,
+				    fn,
+				    stack);
       };
+
    
-    }
+    }   
+    template<class T>
+    typename std::enable_if<concepts::is_member_accessible<T>::value, MemCompareInfo>::type
+    get_mem_compare_info(const T* obj,
+			 const void* next_obj,
+			 mem_compare_continuation_fn_t continuation_fn,
+			 IteratorStack& stack){
+      new (stack.get_new<detail::TupleIterator>( )) detail::TupleIterator{
+	.next_obj = next_obj,
+	  .continuation_fn = continuation_fn,
+	  .next_element = 0
+	  };
+	
+      //      return MemCompareInfo{nullptr,nullptr,nullptr,0};
+
+      return detail::get_mem_compare_info_member_tuple<0, T>(stack,
+							     static_cast<const void* >(obj));
+    };
+   
   }
 }
 

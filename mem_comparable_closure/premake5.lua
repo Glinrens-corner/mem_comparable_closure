@@ -13,8 +13,8 @@ project "mem_comparable_closure"
     files { "src/*.cpp"  }
     includedirs {"include", "src/include"}
     removefiles { "libs/allocators/*.t.cpp"}
-    buildoptions { "-Wall", "-Wno-unused-local-typedef"}
-    optimize "Full"
+    buildoptions { "-Wall",  "-Wno-unused-local-typedef"}
+    optimize "Debug"
     filter "Test"
         files {"test/*.cpp"}
 	includedirs "libs/doctest/doctest"

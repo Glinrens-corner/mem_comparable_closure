@@ -29,7 +29,7 @@ namespace mem_comparable_closure{
 	  auto it = stack.pop_last<VectorCompareIterator>();
 	  return MemCompareInfo{
 	    .next_obj = it.next_obj,
-	    .continuation_fn = it.continuation_fn,
+	      .continuation_fn = it.continuation_fn,
 	      .obj  = nullptr,
 	      .size =0
 	      };
@@ -38,7 +38,7 @@ namespace mem_comparable_closure{
 	  it.next_element = self->size();
 	  return MemCompareInfo{
 	    .next_obj = obj,
-	  .continuation_fn = continue_vector_mem_compare_info<T,Alloc>,
+	      .continuation_fn = continue_vector_mem_compare_info<T,Alloc>,
 	      .obj  = static_cast<const void*>(self->data()),
 	      .size = sizeof(T)*self->size()
 	      };
@@ -84,6 +84,7 @@ namespace mem_comparable_closure{
 	  .size=vec->size()};
       
       auto it = stack.get_last<VectorCompareIterator>();
+      assert(vec);
       return MemCompareInfo{
 	.next_obj = static_cast<const void*>(vec),
 	  .continuation_fn = continue_vector_mem_compare_info<T,Alloc>,
