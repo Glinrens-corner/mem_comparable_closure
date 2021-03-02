@@ -63,13 +63,16 @@ namespace mem_comparable_closure {
   namespace algorithm{
     
     class IteratorStack{
+      // initial maximum size
       static constexpr  std::size_t init_max_size() { return 256;};
     public:
       IteratorStack( ):size(0),max_size(init_max_size()){
 	this->stack_base = reinterpret_cast<char*>(std::aligned_alloc(MAX_SCALAR_ALIGNMENT,init_max_size()));
 	if (!this->stack_base)throw std::bad_alloc();
       };
-      
+
+      // allocates a new T
+      //    throws a bad_alloc if it cannot allocate enough storage
       template<class T>
       void * get_new(){
 	static_assert( alignof(T)<MAX_SCALAR_ALIGNMENT, "unsupported alignment");
@@ -82,13 +85,19 @@ namespace mem_comparable_closure {
 	this->size = new_size;
 	return reinterpret_cast<void*>(this->stack_base+old_size);
       }
-      
+
+      // returns a reference to the last allocated object as if it was a T !
+      //   note:If the last object was not a T it still returns a T&
+      //   but its state is undefined.
       template<class T>
       T& get_last(){
 	assert(this->size >= this->calculate_size_increase<T>());
 	return *reinterpret_cast<T*>(this->stack_base+ ( this->size - this->calculate_size_increase<T>()) );
       }
-      
+
+      // deallocates the last T and returns it
+      //   note:If the last object was not a T it still returns a T
+      //   but its state is undefined.      
       template<class T>
       T pop_last(){
 	assert(this->size>= this->calculate_size_increase<T>());
@@ -147,7 +156,7 @@ namespace mem_comparable_closure {
 // Metaprogramming tests
 // MemCompareInfo
 namespace mem_comparable_closure{
-  namespace algorithm{ 
+  namespace algorithm{
     struct  MemCompareInfo{
       const void* next_obj;
       MemCompareInfo(*continuation_fn)(IteratorStack&, const void*);
@@ -158,7 +167,7 @@ namespace mem_comparable_closure{
   }
     
     
-
+  
   namespace  concepts {
     // note this is trivial in the mem_comparable_closure sense
     // a trivial type can be compared simply by memcmp'ing it.
@@ -183,9 +192,10 @@ namespace mem_comparable_closure{
     // detail::get_mem_compare_info for this type
     template <class T>
     struct is_specialized:std::false_type{};
+
+    
     // is tansparent  effectively alialises to true_type or false_type
-    // this is different from check_transparency
-      
+    // this is different from check_transparency  
     template<class T, class enable = void>
     struct is_transparent : std::false_type{ };
 
@@ -194,13 +204,11 @@ namespace mem_comparable_closure{
 			       is_trivial<T>::value
 			       or is_member_accessible<T>::value
 			       or is_protocol_compatible<T>::value
-
+			       or is_specialized<T>::value
 			       >::type>: std::true_type {};
-     
-      
-
   }
   
+  // specializations for base_types
   namespace concepts {
     template<>
     struct is_trivial<bool> :std::true_type{};
@@ -272,7 +280,8 @@ namespace mem_comparable_closure{
     template<class T>
     using check_transparency = typename  error::is_not_transparent<T>::type;	
   }
-  
+
+  // ComparisonIteratorBase
   namespace algorithm {
     namespace detail{
       struct ComparisonIteratorBase {
@@ -281,8 +290,10 @@ namespace mem_comparable_closure{
       };
     }
   }
-  
+
+  // specializations of get_mem_compare_info
   namespace algorithm {
+    // is_trivial     specialization
     template<class T>
     typename std::enable_if<concepts::is_trivial<T>::value, MemCompareInfo>::type
     get_mem_compare_info(const T* obj,
@@ -297,6 +308,7 @@ namespace mem_comparable_closure{
 	  };
     };
 
+    // is_protocol_compatible specialization
     template<class T>
     typename std::enable_if<concepts::is_protocol_compatible<T>::value, MemCompareInfo>::type
     get_mem_compare_info(const T* obj,
@@ -305,24 +317,66 @@ namespace mem_comparable_closure{
 			 IteratorStack& stack){
       return obj->get_mem_compare_info(next_obj,continuation_fn,stack );
     };
-    /*
-    namespace detail{
-      template <std::size_t, class tuple_t>
-      MemCompareInfo get_mem_compare_info(
-
-    }
     
-    template<class T>
-    typename std::enable_if<concepts::is_member_accessible<T>::value, MemCompareInfo>::type
-    get_mem_compare_info(const T* obj,
-			 const void* next_obj,
-			 mem_compare_continuation_fn_t continuation_fn,
-			 IteratorStack& stack){
-      return detail::get_mem_compare_info_tuple<0>(next_obj->get_member_access(),
-						continuation_fn,
-						stack);
-    };
-    */
+    
+    namespace detail{
+      struct TupleIterator {
+	const void * next_obj;
+	mem_compare_continuation_fn_t  continuation_fn;
+	std::size_t next_element;
+      };
+
+      template<class T>
+      constexpr std::size_t member_tuple_size () {
+	using tuple_t = typename std::invoke_result<typename T::get_member_tuple>::type;
+	return std::tuple_size<tuple_t>::value;
+      };
+      
+      template<std::size_t i, class T>
+      typename std::enable_if<(i< member_tuple_size<T>()), MemCompareInfo>::type
+      get_mem_compare_info_member_tuple(IteratorStack& stack,
+					const void* vobj){
+	T* obj = static_cast<T*>(vobj );
+	auto  member_ptr = std::get<i>(obj->get_member_access()) ;
+	return get_mem_compare_info(member_ptr,
+				    vobj,
+				    get_mem_compare_info_member_tuple<i+1,T>,
+				    stack);
+      };
+
+
+      template<std::size_t i, class T>
+      typename std::enable_if<not (i< member_tuple_size<T>()), MemCompareInfo>::type
+      get_mem_compare_info_member_tuple(IteratorStack& stack,
+					const void* ){
+	auto it = stack.pop_last<TupleIterator>();
+	return MemCompareInfo {
+	  .next_obj = it.next_obj,
+	    .continuation_fn = it.continuation_fn ,
+	    .obj  = nullptr,
+	    .size =0
+	  
+	};
+      };
+      
+      
+      template<class T>
+      typename std::enable_if<concepts::is_member_accessible<T>::value, MemCompareInfo>::type
+      get_mem_compare_info(const T* obj,
+			   const void* next_obj,
+			   mem_compare_continuation_fn_t continuation_fn,
+			   IteratorStack& stack){
+	new (stack.get_new<TupleIterator>( )) TupleIterator{
+	  .next_obj = next_obj,
+	    .continuation_fn = continuation_fn,
+	    .next_element = 0
+	    };
+	
+	return get_mem_compare_info_member_tuple<0, T>(stack,
+						       static_cast<void* >(obj));
+      };
+   
+    }
   }
 }
 
