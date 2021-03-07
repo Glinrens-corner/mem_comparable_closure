@@ -411,11 +411,11 @@ namespace mem_comparable_closure{
 
     
   template<class return_t, class ... Args_t>
-  class Fun{
+  class function{
   private:
     using test_tuple_t = std::tuple<test::check_transparency<Args_t>...>; 
   public:
-    Fun( ClosureBase<return_t, Args_t...>* closure ): closure(closure){};
+    function( ClosureBase<return_t, Args_t...>* closure ): closure(closure){};
     MemCompareInfo get_mem_compare_info(const void* next_obj,
 					mem_compare_continuation_fn_t continuation,
 				        IteratorStack& stack) const {
@@ -426,7 +426,7 @@ namespace mem_comparable_closure{
       return this->closure->operator()(args...);
     };
       
-    ~Fun(){
+    ~function(){
       this->closure->~ClosureBase<return_t, Args_t...>();
       std::free(this->closure );
     };
@@ -435,7 +435,7 @@ namespace mem_comparable_closure{
   };
 
   template<class ... T>
-  struct concepts::is_protocol_compatible<Fun<T...>>
+  struct concepts::is_protocol_compatible<function<T...>>
     : std::true_type{ };
 
 }
@@ -749,7 +749,7 @@ namespace mem_comparable_closure{
       return typename fitting_closure<decltype(this->closure_container.bind(arg))>::type(this->closure_container.bind(arg));
     }
 
-    Fun<return_t, Args_t...> as_fun(){
+    function<return_t, Args_t...> as_fun(){
       void* memory_vptr = std::aligned_alloc(alignof(closure_holder_t), sizeof(closure_holder_t));
       if ( ! memory_vptr){
 	std::bad_alloc exc;
@@ -757,7 +757,7 @@ namespace mem_comparable_closure{
       };
       std::memset(memory_vptr, 0,sizeof(closure_holder_t));
       auto closure_holder_ptr =  new ( memory_vptr) closure_holder_t(this->closure_container);
-      return Fun<return_t, Args_t...>( closure_holder_ptr );
+      return function<return_t, Args_t...>( closure_holder_ptr );
     }
   private:
     closure_container_t closure_container ;
