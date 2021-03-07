@@ -81,9 +81,9 @@ TEST_CASE("Closure"){
   };
   SUBCASE("Metaprogramming Errors"){ 
     // we would need to check that this gives an compiler error
-    //    using h = test::check_transparency<int&>;
+    // test::check_transparency<int&> h{};
     // this however does not.
-    using g = test::check_transparency<int>;
+    using g  = test::check_transparency<int>::type ;
     // Compiler Errors
     //    auto closure2 = ClosureMaker<int&,int,int>::make([](int a, int b )->int{return b;});
     //     int& is not transparent

@@ -154,7 +154,7 @@ namespace mem_comparable_closure {
   };
 }
 
-// Metaprogramming tests
+// Metaprogramming
 // MemCompareInfo
 namespace mem_comparable_closure{
   namespace algorithm{
@@ -261,25 +261,14 @@ namespace mem_comparable_closure{
    
   }
   
-  namespace error{
-    class ignore{};
-    template<class T, class enable=void>
-    struct is_not_transparent{
-    };
-      
-    template<class T >
-    struct is_not_transparent<T, typename std::enable_if<concepts::is_transparent<T>::value, void>::type>{
-      using type = std::false_type;
-    };
-      
-    
-      
-  }
-
   namespace test{
     // check_transparent generates a compiltime error if T is not transparent
     template<class T>
-    using check_transparency = typename  error::is_not_transparent<T>::type;	
+    struct check_transparency{
+      static_assert(concepts::is_transparent<T>::value, "this type is not transparent" );
+      using type = std::true_type;
+    };
+    
   }
 
   // ComparisonIteratorBase
@@ -390,7 +379,7 @@ namespace mem_comparable_closure{
 
 //MemCompareInfo
 // ClosureBase
-// Fun
+// Function
 namespace mem_comparable_closure{
   using  algorithm::mem_compare_continuation_fn_t;
   using  algorithm::IteratorStack;
@@ -411,11 +400,11 @@ namespace mem_comparable_closure{
 
     
   template<class return_t, class ... Args_t>
-  class function{
-  private:
-    using test_tuple_t = std::tuple<test::check_transparency<Args_t>...>; 
+  class Function{
   public:
-    function( ClosureBase<return_t, Args_t...>* closure ): closure(closure){};
+    
+    Function( ClosureBase<return_t, Args_t...>* closure ): closure(closure){};
+    
     MemCompareInfo get_mem_compare_info(const void* next_obj,
 					mem_compare_continuation_fn_t continuation,
 				        IteratorStack& stack) const {
@@ -426,7 +415,7 @@ namespace mem_comparable_closure{
       return this->closure->operator()(args...);
     };
       
-    ~function(){
+    ~Function(){
       this->closure->~ClosureBase<return_t, Args_t...>();
       std::free(this->closure );
     };
@@ -435,7 +424,7 @@ namespace mem_comparable_closure{
   };
 
   template<class ... T>
-  struct concepts::is_protocol_compatible<function<T...>>
+  struct concepts::is_protocol_compatible<Function<T...>>
     : std::true_type{ };
 
 }
@@ -734,13 +723,14 @@ namespace mem_comparable_closure{
   template <class return_t, class ...Args_t, class ...Closed_t >
   class Closure<FunctionSignature<return_t, Args_t...>,  Closed_t...>{
   private:
-    using test_tuple_t = std::tuple<test::check_transparency<Args_t>...,test::check_transparency<Closed_t>...>; 
+    using test_t = std::tuple<typename test::check_transparency<Args_t>::type...>;
     using closure_container_t = ClosureContainer<FunctionSignature<return_t, Args_t...>,  Closed_t...>;
     using closure_holder_t = ClosureHolder<FunctionSignature<return_t, Args_t...>,  Closed_t...>;
   public:
     explicit Closure(closure_container_t closure_container) : closure_container( std::move(closure_container)){};
       
     return_t operator()(Args_t... args)const{
+      
       return this->closure_container(args...);
     }
 
@@ -749,7 +739,7 @@ namespace mem_comparable_closure{
       return typename fitting_closure<decltype(this->closure_container.bind(arg))>::type(this->closure_container.bind(arg));
     }
 
-    function<return_t, Args_t...> as_fun(){
+    Function<return_t, Args_t...> as_fun(){
       void* memory_vptr = std::aligned_alloc(alignof(closure_holder_t), sizeof(closure_holder_t));
       if ( ! memory_vptr){
 	std::bad_alloc exc;
@@ -757,7 +747,7 @@ namespace mem_comparable_closure{
       };
       std::memset(memory_vptr, 0,sizeof(closure_holder_t));
       auto closure_holder_ptr =  new ( memory_vptr) closure_holder_t(this->closure_container);
-      return function<return_t, Args_t...>( closure_holder_ptr );
+      return Function<return_t, Args_t...>( closure_holder_ptr );
     }
   private:
     closure_container_t closure_container ;
@@ -770,7 +760,7 @@ namespace mem_comparable_closure{
 
   template<class return_t, class ...T>
   decltype(auto) closure_from_fp(return_t(*fp)(T... ) ){
-    using test_t = std::tuple<test::check_transparency<T>...>;
+    using test_t = std::tuple<typename test::check_transparency<T>::type...>;
     using signature_t = FunctionSignature<return_t, T...>;
     return Closure<signature_t>(ClosureContainer<signature_t>(fp));
 
@@ -778,7 +768,7 @@ namespace mem_comparable_closure{
     
   template<class return_t, class ...T>
   struct ClosureMaker {
-    using test_t = std::tuple<test::check_transparency<T>...>;
+    using test_t = std::tuple<typename test::check_transparency<T>::type...>;
     template <class M>
     static Closure<FunctionSignature<return_t,T...>>  make(M m){
       // this gives horrible error messages.
