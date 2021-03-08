@@ -404,7 +404,9 @@ namespace mem_comparable_closure{
   public:
     
     Function( ClosureBase<return_t, Args_t...>* closure ): closure(closure){};
-    
+    Function( const Function<return_t, Args_t...>& ) = delete;
+    Function( Function<return_t, Args_t...>&& fun) : closure(fun->closure){ fun->closure = nullptr;
+    };
     MemCompareInfo get_mem_compare_info(const void* next_obj,
 					mem_compare_continuation_fn_t continuation,
 				        IteratorStack& stack) const {
@@ -416,8 +418,10 @@ namespace mem_comparable_closure{
     };
       
     ~Function(){
-      this->closure->~ClosureBase<return_t, Args_t...>();
-      std::free(this->closure );
+      if (this->closure){
+	this->closure->~ClosureBase<return_t, Args_t...>();
+	std::free(this->closure );
+      };
     };
   private:
     ClosureBase<return_t, Args_t...>* closure;
