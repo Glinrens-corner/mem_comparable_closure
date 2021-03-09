@@ -59,6 +59,103 @@
 #define MAX_SCALAR_ALIGNMENT 16
 
 
+
+// metaprogramming concepts
+namespace mem_comparable_closure {
+  namespace  concepts {
+    // note this is trivial in the mem_comparable_closure sense
+    // a trivial type can be compared simply by memcmp'ing it.
+    // so no padding, no pointers
+    template<class T>
+    struct is_trivial: std::false_type { };
+
+    // a member_accessible type has a method get_members()
+    //which returns a std::tuple of pointers to its data_members 
+    template<class T>
+    struct is_member_accessible: std::false_type {};
+
+    // a protocol_compatible type has a
+    //  MemCompareInfo get_mem_compare_info(const void* next_obj,
+    //                        mem_compare_continuation_fn_t continuation,
+    //                        detail::IteratorStack& stack)const
+    // method.
+    template<class T>
+    struct is_protocol_compatible: std::false_type{};
+
+    // is_specialized means there is a specialized version of
+    // detail::get_mem_compare_info for this type
+    template <class T>
+    struct is_specialized:std::false_type{};
+
+    
+    // is tansparent  effectively alialises to true_type or false_type
+    // this is different from check_transparency  
+    template<class T, class enable = void>
+    struct is_transparent : std::false_type{ };
+
+    template<class T >
+    struct is_transparent<T, typename std::enable_if<
+			       is_trivial<T>::value
+			       or is_member_accessible<T>::value
+			       or is_protocol_compatible<T>::value
+			       or is_specialized<T>::value
+			       >::type>: std::true_type {};
+  }
+  
+  // specializations for base_types
+  namespace concepts {
+    template<>
+    struct is_trivial<bool> :std::true_type{};
+    template<>
+    struct is_trivial<char> :std::true_type{};
+    template<>
+    struct is_trivial<unsigned char> :std::true_type{};
+    template<>
+    struct is_trivial<signed char> :std::true_type{};
+
+    template<>
+    struct is_trivial<int> :std::true_type{};
+    template<>
+    struct is_trivial<unsigned int> :std::true_type{};
+    //      template<>
+    //      struct is_trivial<signed int> :std::true_type{};
+
+    template<>
+    struct is_trivial<short int> :std::true_type{};
+    template<>
+    struct is_trivial<unsigned short int> :std::true_type{};
+    //      template<>
+    //      struct is_trivial<signed short int> :std::true_type{};
+      
+    template<>
+    struct is_trivial<long int> :std::true_type{};
+    template<>
+    struct is_trivial<unsigned long int> :std::true_type{};
+    //      template<>
+    //      struct is_trivial<signed long int> :std::true_type{};
+
+
+    template<>
+    struct is_trivial<long long int> :std::true_type{};
+    template<>
+    struct is_trivial<unsigned long long int> :std::true_type{};
+    //      template<>
+    //      struct is_trivial<signed long long int> :std::true_type{};
+
+    template<>
+    struct is_trivial<float> :std::true_type{};
+    template<>
+    struct is_trivial<double> :std::true_type{};
+      
+    template<>
+    struct is_trivial<long double> :std::true_type{};
+    template<>
+    struct is_trivial<wchar_t> :std::true_type{};
+   
+  }
+}
+
+
 // IteratorStack  
 namespace mem_comparable_closure {
   namespace algorithm{
@@ -154,113 +251,33 @@ namespace mem_comparable_closure {
   };
 }
 
-// Metaprogramming
 // MemCompareInfo
 namespace mem_comparable_closure{
+  
   namespace algorithm{
+    // MemCompareInfo is the struct that is passed up
+    // from the to compared object to the algorithm
+    // it contains the info for the continuation:
+    //    which should be called like
+    //   mem_compare_info.continuation_fn(stack, mem_compare_info.next_obj)
+    // to get the next mem_compare_info
+    //
+    // obj is a pointer to the next object to be compared.
+    //     size is sizeof(*obj)
     struct  MemCompareInfo{
       const void* next_obj;
       MemCompareInfo(*continuation_fn)(IteratorStack&, const void*);
       const void* obj;
       std::size_t size;
     };
+    
     using mem_compare_continuation_fn_t = decltype(MemCompareInfo::continuation_fn);
   }
     
-    
-  
-  namespace  concepts {
-    // note this is trivial in the mem_comparable_closure sense
-    // a trivial type can be compared simply by memcmp'ing it.
-    // so no padding, no pointers
-    template<class T>
-    struct is_trivial: std::false_type { };
+}
 
-    // a member_accessible type has a method get_members()
-    //which returns a std::tuple of pointers to its data_members 
-    template<class T>
-    struct is_member_accessible: std::false_type {};
-
-    // a protocol_compatible type has a
-    //  MemCompareInfo get_mem_compare_info(const void* next_obj,
-    //                        mem_compare_continuation_fn_t continuation,
-    //                        detail::IteratorStack& stack)const
-    // method.
-    template<class T>
-    struct is_protocol_compatible: std::false_type{};
-
-    // is_specialized means there is a specialized version of
-    // detail::get_mem_compare_info for this type
-    template <class T>
-    struct is_specialized:std::false_type{};
-
-    
-    // is tansparent  effectively alialises to true_type or false_type
-    // this is different from check_transparency  
-    template<class T, class enable = void>
-    struct is_transparent : std::false_type{ };
-
-    template<class T >
-    struct is_transparent<T, typename std::enable_if<
-			       is_trivial<T>::value
-			       or is_member_accessible<T>::value
-			       or is_protocol_compatible<T>::value
-			       or is_specialized<T>::value
-			       >::type>: std::true_type {};
-  }
-  
-  // specializations for base_types
-  namespace concepts {
-    template<>
-    struct is_trivial<bool> :std::true_type{};
-    template<>
-    struct is_trivial<char> :std::true_type{};
-    template<>
-    struct is_trivial<unsigned char> :std::true_type{};
-    template<>
-    struct is_trivial<signed char> :std::true_type{};
-
-    template<>
-    struct is_trivial<int> :std::true_type{};
-    template<>
-    struct is_trivial<unsigned int> :std::true_type{};
-    //      template<>
-    //      struct is_trivial<signed int> :std::true_type{};
-
-    template<>
-    struct is_trivial<short int> :std::true_type{};
-    template<>
-    struct is_trivial<unsigned short int> :std::true_type{};
-    //      template<>
-    //      struct is_trivial<signed short int> :std::true_type{};
-      
-    template<>
-    struct is_trivial<long int> :std::true_type{};
-    template<>
-    struct is_trivial<unsigned long int> :std::true_type{};
-    //      template<>
-    //      struct is_trivial<signed long int> :std::true_type{};
-
-
-    template<>
-    struct is_trivial<long long int> :std::true_type{};
-    template<>
-    struct is_trivial<unsigned long long int> :std::true_type{};
-    //      template<>
-    //      struct is_trivial<signed long long int> :std::true_type{};
-
-    template<>
-    struct is_trivial<float> :std::true_type{};
-    template<>
-    struct is_trivial<double> :std::true_type{};
-      
-    template<>
-    struct is_trivial<long double> :std::true_type{};
-    template<>
-    struct is_trivial<wchar_t> :std::true_type{};
-   
-  }
-  
+// metaprogramming checks 
+namespace mem_comparable_closure{
   namespace test{
     // check_transparent generates a compiltime error if T is not transparent
     template<class T>
@@ -270,10 +287,14 @@ namespace mem_comparable_closure{
     };
     
   }
+}// mem_comparable_closure
 
+namespace mem_comparable_closure{
   // ComparisonIteratorBase
   namespace algorithm {
     namespace detail{
+      // a simple struct to push onto the iterator stack.
+      // for those cases when no iterator state is needed to be saved.
       struct ComparisonIteratorBase {
 	const void * next_obj;
 	mem_compare_continuation_fn_t  continuation_fn;
@@ -300,22 +321,21 @@ namespace mem_comparable_closure{
 
     // is_protocol_compatible specialization
     template<class T>
-    typename std::enable_if<concepts::is_protocol_compatible<T>::value, MemCompareInfo>::type
-    get_mem_compare_info(const T* obj,
-			 const void* next_obj,
-			 mem_compare_continuation_fn_t continuation_fn,
-			 IteratorStack& stack){
+    typename std::enable_if<
+      concepts::is_protocol_compatible<T>::value,
+      MemCompareInfo
+      >::type
+    get_mem_compare_info(
+	const T* obj,
+	const void* next_obj,
+	mem_compare_continuation_fn_t continuation_fn,
+	IteratorStack& stack
+	){
       return obj->get_mem_compare_info(next_obj,continuation_fn,stack );
     };
     
     
     namespace detail{
-      struct TupleIterator {
-	const void * next_obj;
-	mem_compare_continuation_fn_t  continuation_fn;
-	std::size_t next_element;
-      };
-
       template<class T>
       constexpr std::size_t member_tuple_size () {
 	using tuple_t = decltype(static_cast<T*>(nullptr)->get_member_access());
@@ -325,16 +345,17 @@ namespace mem_comparable_closure{
 
 
       template<std::size_t i, class T>
-      typename std::enable_if<not (i< member_tuple_size<T>()), MemCompareInfo>::type
+      typename std::enable_if<
+	not (i< member_tuple_size<T>()),
+	  MemCompareInfo>::type
       get_mem_compare_info_member_tuple(IteratorStack& stack,
 					const void* ){
-	auto it = stack.pop_last<TupleIterator>();
+	auto it = stack.pop_last<ComparisonIteratorBase>();
 	return MemCompareInfo {
 	  .next_obj = it.next_obj,
 	    .continuation_fn = it.continuation_fn ,
 	    .obj  = nullptr,
 	    .size =0
-	  
 	};
       };
 
@@ -362,14 +383,10 @@ namespace mem_comparable_closure{
 			 const void* next_obj,
 			 mem_compare_continuation_fn_t continuation_fn,
 			 IteratorStack& stack){
-      new (stack.get_new<detail::TupleIterator>( )) detail::TupleIterator{
+      new (stack.get_new<detail::ComparisonIteratorBase>( )) detail::ComparisonIteratorBase{
 	.next_obj = next_obj,
-	  .continuation_fn = continuation_fn,
-	  .next_element = 0
+	  .continuation_fn = continuation_fn
 	  };
-	
-      //      return MemCompareInfo{nullptr,nullptr,nullptr,0};
-
       return detail::get_mem_compare_info_member_tuple<0, T>(stack,
 							     static_cast<const void* >(obj));
     };
@@ -377,7 +394,6 @@ namespace mem_comparable_closure{
   }
 }
 
-//MemCompareInfo
 // ClosureBase
 // Function
 namespace mem_comparable_closure{
