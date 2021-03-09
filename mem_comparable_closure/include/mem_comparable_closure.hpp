@@ -8,7 +8,7 @@
 #include <type_traits>
 #include <cassert>
 #include <functional>
-
+#include <memory>
 /*
  *  Ok a little explanation: 
  *   FunctionSignature is simply a holder class for the variadic Arguments, to separate them in variadic argument lists of other classes
@@ -419,11 +419,15 @@ namespace mem_comparable_closure{
   class Function{
   public:
     
-    Function( ClosureBase<return_t, Args_t...>* closure ): closure(closure){};
+    Function( std::shared_ptr<ClosureBase<return_t, Args_t...>> closure ): closure(std::move(closure)){};
     Function( const Function<return_t, Args_t...>& ) = delete;
     Function<return_t, Args_t...>& operator=( const Function<return_t, Args_t...>& ) = delete;
     Function( Function<return_t, Args_t...>&& fun) :
       closure(fun.closure){ fun.closure = nullptr;};
+    Function<return_t, Args_t...> copy() {
+      return Function<return_t, Args_t...>(this->closure);
+    };
+    
     Function<return_t, Args_t...>& operator=(Function<return_t, Args_t...>&& other){
       if ( other.closure ==this->closure) return *this;
       if(this->closure) delete this->closure;
@@ -443,13 +447,8 @@ namespace mem_comparable_closure{
       return this->closure->operator()(args...);
     };
       
-    ~Function(){
-      if (this->closure){
-	delete this->closure;
-      };
-    };
   private:
-    ClosureBase<return_t, Args_t...>* closure;
+    std::shared_ptr<ClosureBase<return_t, Args_t...>> closure;
   };
 
   template<class ... T>
@@ -774,7 +773,8 @@ namespace mem_comparable_closure{
     }
 
     Function<return_t, Args_t...> as_fun(){
-      return Function<return_t, Args_t...>( new  closure_holder_t(this->closure_container) );
+      using closure_base_t = ClosureBase<return_t, Args_t...>;
+      return Function<return_t, Args_t...>( std::shared_ptr<closure_base_t>(new closure_holder_t(this->closure_container)) );
     }
   private:
     closure_container_t closure_container ;
