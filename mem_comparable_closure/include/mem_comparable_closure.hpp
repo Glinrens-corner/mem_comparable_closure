@@ -759,6 +759,7 @@ namespace mem_comparable_closure{
   private:
     using closure_container_t = ClosureContainer<FunctionSignature<return_t, Args_t...>,  Closed_t...>;
     using closure_holder_t = ClosureHolder<FunctionSignature<return_t, Args_t...>,  Closed_t...>;
+    using function_t = Function<return_t,Args_t...>;
   public:
     explicit Closure(closure_container_t closure_container) : closure_container( std::move(closure_container)){};
       
@@ -767,14 +768,37 @@ namespace mem_comparable_closure{
       return this->closure_container(args...);
     }
 
-    template<class T, typename std::enable_if<(sizeof...(Args_t)>= 1), bool>::type=true>
+
+    function_t as_fun(){
+      using closure_base_t = ClosureBase<return_t, Args_t...>;
+      return function_t( std::shared_ptr<closure_base_t>(new closure_holder_t(this->closure_container)) );
+    }
+  private:
+    closure_container_t closure_container ;
+  };
+  
+  template <class return_t,class first_arg_t, class ...Args_t, class ...Closed_t >
+  class Closure<FunctionSignature<return_t, first_arg_t,Args_t...>,  Closed_t...>{
+  private:
+    using closure_container_t = ClosureContainer<FunctionSignature<return_t, first_arg_t,Args_t...>,  Closed_t...>;
+    using closure_holder_t = ClosureHolder<FunctionSignature<return_t,first_arg_t, Args_t...>,  Closed_t...>;
+    using function_t = Function<return_t,first_arg_t,Args_t...>;
+  public:
+    explicit Closure(closure_container_t closure_container) : closure_container( std::move(closure_container)){};
+      
+    return_t operator()(first_arg_t arg1,Args_t... args)const{
+      
+      return this->closure_container(arg1,args...);
+    }
+    
+    template<class T>
     decltype(auto) bind(T arg){
       return typename fitting_closure<decltype(this->closure_container.bind(arg))>::type(this->closure_container.bind(arg));
     }
-
-    Function<return_t, Args_t...> as_fun(){
-      using closure_base_t = ClosureBase<return_t, Args_t...>;
-      return Function<return_t, Args_t...>( std::shared_ptr<closure_base_t>(new closure_holder_t(this->closure_container)) );
+    
+    function_t as_fun(){
+      using closure_base_t = ClosureBase<return_t, first_arg_t,Args_t...>;
+      return function_t( std::shared_ptr<closure_base_t>(new closure_holder_t(this->closure_container)) );
     }
   private:
     closure_container_t closure_container ;
