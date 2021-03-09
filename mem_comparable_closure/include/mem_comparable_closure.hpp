@@ -420,11 +420,12 @@ namespace mem_comparable_closure{
   public:
     
     Function( std::shared_ptr<ClosureBase<return_t, Args_t...>> closure ): closure(std::move(closure)){};
-    Function( const Function<return_t, Args_t...>& ) = delete;
+    Function( const Function<return_t, Args_t...>& )=default;
     Function<return_t, Args_t...>& operator=( const Function<return_t, Args_t...>& ) = delete;
     Function( Function<return_t, Args_t...>&& fun) :
       closure(fun.closure){ fun.closure = nullptr;};
-    Function<return_t, Args_t...> copy() {
+    
+    Function<return_t, Args_t...> copy() const{
       return Function<return_t, Args_t...>(this->closure);
     };
     
