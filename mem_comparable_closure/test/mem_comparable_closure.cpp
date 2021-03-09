@@ -4,12 +4,51 @@
 #include <type_traits>
 #include <array>
 
+enum class MyEnum: int{
+  a,b,c};
+  
+template<>
+struct  ::mem_comparable_closure::concepts::is_trivial<MyEnum> : std::true_type{};
+
+class MyMemberAccessibleClass{
+  std::tuple<const int*, const bool*> get_member_access(){
+    return std::tuple<const int*, const bool*>(&(this->i), &(this->f));
+  };
+  
+private:
+  int i=127;
+  bool f=false;
+};
+
+template<>
+struct ::mem_comparable_closure::concepts::is_member_accessible<MyMemberAccessibleClass> : std::true_type{};
+
+TEST_CASE("concepts"){
+  using  mem_comparable_closure::concepts::is_transparent;
+  
+  class MyIntransparentStruct {};
+  CHECK_FALSE(is_transparent< MyIntransparentStruct>::value);
+
+  SUBCASE("is_trivial"){
+    enum class MyIntransparentEnum: int{
+      a,b,c};
+    CHECK_FALSE(is_transparent< MyIntransparentEnum>::value);
+    CHECK(is_transparent< MyEnum>::value);
+  };
+
+  SUBCASE("is_member_accessible"){
+    
+    CHECK(is_transparent< MyMemberAccessibleClass>::value);
+  }
+};
+
+
+
 TEST_CASE("IteratorStack"){
   using  mem_comparable_closure::algorithm::IteratorStack;
   SUBCASE("basic test"){
     IteratorStack stack{};
     
-
     REQUIRE(stack.get_size()==0 );
     new (stack.get_new<int>()) int{5};
     CHECK(stack.get_size() >= sizeof(int));
@@ -19,8 +58,6 @@ TEST_CASE("IteratorStack"){
   };
   SUBCASE("multiple"){
     IteratorStack stack{};
-
-    //    
 
     new (stack.get_new<long>()) long{5};
     new (stack.get_new<int>()) int{4};
@@ -56,8 +93,6 @@ TEST_CASE("IteratorStack"){
 TEST_CASE("Closure"){
   using namespace mem_comparable_closure;
 
-
-
   SUBCASE("creation"){
     using closure_t = Closure<
       FunctionSignature<int,int,int> >;
@@ -83,12 +118,18 @@ TEST_CASE("Closure"){
     // we would need to check that this gives an compiler error
     // test::check_transparency<int&> h{};
     // this however does not.
-    using g  = test::check_transparency<int>::type ;
+    using G  = test::check_transparency<int,bool>::type ;
+    G g = true;
+    CHECK(g);
     // Compiler Errors
-    //    auto closure2 = ClosureMaker<int&,int,int>::make([](int a, int b )->int{return b;});
+    //    auto closure2 = ClosureMaker<int,int&,int>::make([](int a, int b )->int{return b;});
     //     int& is not transparent
     //    auto closure3 = ClosureMaker<int,int,int>::make([](int& a, int b )->int{return b;});
     //     int& is not transparent
+    // it s ok as long as you don't try to bind anything to it.
+    auto closure4 = ClosureMaker<int,int,int&>::make([](int a, int& b )->int{return a;});
+    auto closure4_1 = closure4.bind(1);
+    // auto closure4_2 = closure4_1.bind(100);
   };
 					    
   SUBCASE("check equality"){

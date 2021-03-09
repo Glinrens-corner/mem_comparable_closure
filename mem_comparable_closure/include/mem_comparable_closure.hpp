@@ -7,7 +7,7 @@
 #include <utility>
 #include <type_traits>
 #include <cassert>
-
+#include <functional>
 
 /*
  *  Ok a little explanation: 
@@ -280,10 +280,10 @@ namespace mem_comparable_closure{
 namespace mem_comparable_closure{
   namespace test{
     // check_transparent generates a compiltime error if T is not transparent
-    template<class T>
+    template<class T, class V = void>
     struct check_transparency{
       static_assert(concepts::is_transparent<T>::value, "this type is not transparent" );
-      using type = std::true_type;
+      using type = V;
     };
     
   }
@@ -421,8 +421,17 @@ namespace mem_comparable_closure{
     
     Function( ClosureBase<return_t, Args_t...>* closure ): closure(closure){};
     Function( const Function<return_t, Args_t...>& ) = delete;
-    Function( Function<return_t, Args_t...>&& fun) : closure(fun.closure){ fun.closure = nullptr;
-    };
+    Function<return_t, Args_t...>& operator=( const Function<return_t, Args_t...>& ) = delete;
+    Function( Function<return_t, Args_t...>&& fun) :
+      closure(fun.closure){ fun.closure = nullptr;};
+    Function<return_t, Args_t...>& operator=(Function<return_t, Args_t...>&& other){
+      if ( other.closure ==this->closure) return *this;
+      if(this->closure) delete this->closure;
+      this->closure = other.closure;
+      other.closure = nullptr;
+      return *this;
+    }
+
     MemCompareInfo get_mem_compare_info(const void* next_obj,
 					mem_compare_continuation_fn_t continuation,
 				        IteratorStack& stack) const {
@@ -430,13 +439,13 @@ namespace mem_comparable_closure{
     };
     
     return_t operator()(Args_t... args)const{
+      if(!this->closure) throw  std::bad_function_call();
       return this->closure->operator()(args...);
     };
       
     ~Function(){
       if (this->closure){
-	this->closure->~ClosureBase<return_t, Args_t...>();
-	std::free(this->closure );
+	delete this->closure;
       };
     };
   private:
@@ -446,7 +455,6 @@ namespace mem_comparable_closure{
   template<class ... T>
   struct concepts::is_protocol_compatible<Function<T...>>
     : std::true_type{ };
-
 }
 
 // ClosureContainer
@@ -545,9 +553,10 @@ namespace mem_comparable_closure{
       return info;
     };      
 
-    
-    decltype(auto) bind(first_t closed_arg) {
-      return ClosureContainer<FunctionSignature<return_t, Arg_t...>,first_t>(*this, closed_arg);  
+    template<class T>
+    decltype(auto) bind(T closed_arg) {
+      using bound_arg = typename test::check_transparency<first_t, first_t>::type; 
+      return ClosureContainer<FunctionSignature<return_t, Arg_t...>,first_t>(*this, static_cast<bound_arg>(closed_arg));  
     }
   private:
     return_t (*fn)(first_t,Arg_t... );
@@ -639,11 +648,17 @@ namespace mem_comparable_closure{
     ClosureContainer(parent_t closure,
 		     first_closure_t first): parent_t(closure),first(first){}; 
 
-    decltype(auto) bind(first_arg_t closed_arg) {
-      return ClosureContainer<FunctionSignature<return_t, Args_t...>,
-			      first_arg_t,
-			      first_closure_t,
-			      closure_t...>(*this, closed_arg);  
+    template<class T>
+    decltype(auto) bind(T closed_arg) {
+      using bound_arg = typename test::check_transparency<first_arg_t, first_arg_t>::type; 
+      return ClosureContainer<
+	FunctionSignature<return_t, Args_t...>,
+	first_arg_t,
+	first_closure_t,
+	closure_t...>(
+	    *this,
+	    static_cast<bound_arg>(closed_arg)
+	    );  
     }
 
     return_t operator()(first_arg_t first, Args_t... args)const{
@@ -743,7 +758,6 @@ namespace mem_comparable_closure{
   template <class return_t, class ...Args_t, class ...Closed_t >
   class Closure<FunctionSignature<return_t, Args_t...>,  Closed_t...>{
   private:
-    using test_t = std::tuple<typename test::check_transparency<Args_t>::type...>;
     using closure_container_t = ClosureContainer<FunctionSignature<return_t, Args_t...>,  Closed_t...>;
     using closure_holder_t = ClosureHolder<FunctionSignature<return_t, Args_t...>,  Closed_t...>;
   public:
@@ -760,18 +774,10 @@ namespace mem_comparable_closure{
     }
 
     Function<return_t, Args_t...> as_fun(){
-      void* memory_vptr = std::aligned_alloc(alignof(closure_holder_t), sizeof(closure_holder_t));
-      if ( ! memory_vptr){
-	std::bad_alloc exc;
-	throw exc;
-      };
-      std::memset(memory_vptr, 0,sizeof(closure_holder_t));
-      auto closure_holder_ptr =  new ( memory_vptr) closure_holder_t(this->closure_container);
-      return Function<return_t, Args_t...>( closure_holder_ptr );
+      return Function<return_t, Args_t...>( new  closure_holder_t(this->closure_container) );
     }
   private:
     closure_container_t closure_container ;
-
   };
 }
   
@@ -780,7 +786,7 @@ namespace mem_comparable_closure{
 
   template<class return_t, class ...T>
   decltype(auto) closure_from_fp(return_t(*fp)(T... ) ){
-    using test_t = std::tuple<typename test::check_transparency<T>::type...>;
+    
     using signature_t = FunctionSignature<return_t, T...>;
     return Closure<signature_t>(ClosureContainer<signature_t>(fp));
 
@@ -788,7 +794,6 @@ namespace mem_comparable_closure{
     
   template<class return_t, class ...T>
   struct ClosureMaker {
-    using test_t = std::tuple<typename test::check_transparency<T>::type...>;
     template <class M>
     static Closure<FunctionSignature<return_t,T...>>  make(M m){
       // this gives horrible error messages.
